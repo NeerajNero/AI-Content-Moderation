@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>AI Moderation POC</title>
+<style>
+* { box-sizing: border-box; }
+body { font-family: Arial; background:#f3f4f6; display:flex; justify-content:center; align-items:center; min-height:100vh; margin:0; padding:20px;}
+.card { background:white; padding:30px; border-radius:16px; width:100%; max-width:800px; min-width:0; box-shadow:0 10px 30px rgba(0,0,0,0.1);}
+textarea { width:100%; padding:10px; border-radius:8px; border:1px solid #ccc;}
+button { width:auto; min-width:160px; padding:12px 24px; border-radius:8px; border:none; background:#3b82f6; color:white; font-weight:bold; margin-top:10px; display:inline-flex; align-items:center; justify-content:center; gap:8px;}
+button:disabled { opacity:0.7; cursor:not-allowed;}
+@keyframes spin { to { transform: rotate(360deg); }}
+.btn-spinner { width:18px; height:18px; border:2px solid rgba(255,255,255,0.4); border-top-color:white; border-radius:50%; animation: spin 0.7s linear infinite;}
+.btn-spinner.hidden { display:none;}
+.result { margin-top:20px; padding:15px; border-radius:12px; background:#f9fafb; border:1px solid #e5e7eb;}
+.badge { padding:6px 12px; border-radius:20px; font-weight:bold; color:white;}
+.approved { background:#16a34a;}
+.review { background:#f59e0b;}
+.rejected { background:#dc2626;}
+.progress { height:12px; border-radius:10px; background:#e5e7eb; overflow:hidden; margin-top:8px;}
+.progress-bar { height:100%;}
+#rawJson { margin:0; padding:12px; max-width:100%; overflow:auto; background:#1e293b; color:#e2e8f0; border-radius:8px; font-size:12px; line-height:1.4;}
+.uploaded-img-wrap { margin-top:12px; }
+.uploaded-img { max-width:160px; max-height:120px; width:auto; height:auto; object-fit:contain; border-radius:8px; border:1px solid #e5e7eb; display:block; }
+</style>
+</head>
+<body>
+
+<div class="card">
+<h2>🛡 AI Moderation POC</h2>
+
+<form id="form">
+<textarea name="text" rows="4" placeholder="Enter text..."></textarea>
+<br><br>
+<input type="file" name="image" accept="image/*">
+<button type="submit" id="submitBtn">
+  <span class="btn-spinner hidden" id="btnSpinner"></span>
+  <span id="btnText">Analyze</span>
+</button>
+</form>
+
+<div id="result" class="result" style="display:none;">
+<div id="badge" class="badge"></div>
+<p>Risk Score: <strong><span id="risk"></span></strong></p>
+<div class="progress">
+<div id="bar" class="progress-bar"></div>
+</div>
+
+<div id="uploadedImageWrap" class="uploaded-img-wrap" style="display:none;">
+<h4>Uploaded image</h4>
+<img id="uploadedImage" class="uploaded-img" alt="Uploaded" />
+</div>
+
+<h4>Text Explanation</h4>
+<p id="textExp"></p>
+
+<h4>Image Explanation</h4>
+<p id="imageExp"></p>
+
+<h4>Final Assessment</h4>
+<p id="finalExp"></p>
+
+<h4>Raw JSON</h4>
+<pre id="rawJson"></pre>
+</div>
+</div>
+
+<script>
+const form = document.getElementById("form");
+const resultDiv = document.getElementById("result");
+const badge = document.getElementById("badge");
+const risk = document.getElementById("risk");
+const bar = document.getElementById("bar");
+const textExp = document.getElementById("textExp");
+const imageExp = document.getElementById("imageExp");
+const finalExp = document.getElementById("finalExp");
+const rawJson = document.getElementById("rawJson");
+const submitBtn = document.getElementById("submitBtn");
+const btnSpinner = document.getElementById("btnSpinner");
+const btnText = document.getElementById("btnText");
+const uploadedImageWrap = document.getElementById("uploadedImageWrap");
+const uploadedImage = document.getElementById("uploadedImage");
+
+let lastObjectUrl = null;
+
+function setLoading(loading) {
+  submitBtn.disabled = loading;
+  btnSpinner.classList.toggle("hidden", !loading);
+  btnText.textContent = loading ? "Analyzing…" : "Analyze";
+}
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const formData = new FormData(form);
+  setLoading(true);
+
+  if (lastObjectUrl) {
+    URL.revokeObjectURL(lastObjectUrl);
+    lastObjectUrl = null;
+  }
+  const fileInput = form.querySelector('input[name="image"]');
+  const file = fileInput && fileInput.files[0];
+  if (file && file.type.startsWith("image/")) {
+    lastObjectUrl = URL.createObjectURL(file);
+  }
+
+  try {
+    const res = await fetch("/moderate", {
+      method: "POST",
+      body: formData
+    });
+    const data = await res.json();
+    resultDiv.style.display = "block";
+
+    if (lastObjectUrl) {
+      uploadedImage.src = lastObjectUrl;
+      uploadedImageWrap.style.display = "block";
+    } else {
+      uploadedImageWrap.style.display = "none";
+      uploadedImage.removeAttribute("src");
+    }
+
+  badge.className = "badge";
+  if (data.decision === "approved") {
+    badge.classList.add("approved");
+    badge.textContent = "APPROVED";
+  } else if (data.decision === "under_review") {
+    badge.classList.add("review");
+    badge.textContent = "UNDER REVIEW";
+  } else {
+    badge.classList.add("rejected");
+    badge.textContent = "REJECTED";
+  }
+
+  risk.textContent = data.combinedRisk;
+  bar.style.width = data.combinedRisk + "%";
+
+  if (data.combinedRisk < 50) bar.style.background = "#16a34a";
+  else if (data.combinedRisk < 75) bar.style.background = "#f59e0b";
+  else bar.style.background = "#dc2626";
+
+  textExp.textContent =
+    data.textModeration?.explanation?.trim() ||
+    (data.textModeration ? "No explanation available." : "No text submitted.");
+
+  imageExp.textContent =
+    data.imageModeration?.explanation?.trim() ||
+    (data.imageModeration ? "No explanation available." : "No image submitted.");
+
+  finalExp.textContent =
+    data.finalExplanation?.trim() || "No final assessment available.";
+
+  rawJson.textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    resultDiv.style.display = "block";
+    if (lastObjectUrl) {
+      uploadedImage.src = lastObjectUrl;
+      uploadedImageWrap.style.display = "block";
+    } else {
+      uploadedImageWrap.style.display = "none";
+    }
+    rawJson.textContent = JSON.stringify({ error: "Moderation failed. Please try again." }, null, 2);
+  } finally {
+    setLoading(false);
+  }
+});
+</script>
+
+</body>
+</html>
