@@ -13,7 +13,7 @@ A proof-of-concept content moderation system that analyzes **text** and **images
 
 - **Backend:** Node.js, Express, Multer
 - **Text:** OpenAI API (chat completions, JSON output)
-- **Images:** AWS Rekognition (DetectModerationLabels), Sharp (resize when > 5 MB)
+- **Images:** AWS Rekognition (DetectModerationLabels), Sharp (resize when > 5 MB) - Lambda - SQS and Rekognition
 - **Frontend:** Vanilla HTML/CSS/JS
 
 ## Setup
