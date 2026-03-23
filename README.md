@@ -1,4 +1,4 @@
-# AI Moderation POC
+# AI Moderation POC - Content Moderation
 
 A proof-of-concept content moderation system that analyzes **text** and **images** and returns a single decision (approved / under review / rejected) with explanations.
 
